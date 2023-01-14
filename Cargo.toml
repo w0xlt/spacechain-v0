@@ -1,0 +1,12 @@
+[package]
+name = "spacechains"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bdk = { version = "0.26.0", default-feature = false, features = ["all-keys", "sqlite-bundled"] }
+hex = "0.4.3"
+dirs = "4.0"
+serde_json = "1.0.91"
