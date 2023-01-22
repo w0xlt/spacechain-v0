@@ -1,4 +1,4 @@
-use bdk::bitcoin::{Txid, Script, Transaction, Network, PrivateKey};
+use bdk::bitcoin::{Txid, Script, Transaction, PrivateKey};
 use bdk::bitcoin::secp256k1::{Secp256k1, SecretKey, PublicKey};
 use bdk::database::SqliteDatabase;
 use bdk::miniscript::Descriptor;
@@ -7,13 +7,14 @@ use bdk::{Wallet, TransactionDetails, LocalUtxo, SignOptions, KeychainKind};
 
 use std::str::FromStr;
 
+use crate::config_file::ConfigFile;
 use crate::utils;
 
-pub fn create_convenant_transaction(network: bdk::bitcoin::Network) -> (Transaction, usize)
+pub fn create_convenant_transaction(cfg: &ConfigFile) -> (Transaction, usize)
 {
-    let wallet = load_convenant_wallet(network);
-    let utxo = get_convenant_utxo(&wallet, network).unwrap();
-    let tx = build_transaction(&wallet, &utxo, network);
+    let wallet = load_convenant_wallet(cfg);
+    let utxo = get_convenant_utxo(&wallet, cfg).unwrap();
+    let tx = build_transaction(&wallet, &utxo, cfg);
 
     // This is used to add this convenant_transaction as input in the cpfp_transaction
     let satisfaction_weight = wallet
@@ -22,18 +23,14 @@ pub fn create_convenant_transaction(network: bdk::bitcoin::Network) -> (Transact
             .unwrap();
 
     (tx, satisfaction_weight)
-
-    // println!("COVENANT UTXO: {}:{}", utxo.outpoint.txid, utxo.outpoint.vout);
-    // let consensus_encoded = serialize(&tx);
-
-    // println!("Covenant tx: {:02x?}", consensus_encoded);
 }
 
-fn covenant_descriptor(private_key: bool, network: bdk::bitcoin::Network) -> String
+fn covenant_descriptor(private_key: bool, cfg: &ConfigFile) -> String
 {
-    const KEY_STRING: &str = "eb445ec7e0fd814db1e84622cddad9cd30154ee22bc6c2a4a61f6287be39f2d2";
+    let key_string: &str = cfg.covenant_private_key_hex.as_str();
+    let network = cfg.get_network().unwrap();
 
-    let sk_vec = hex::decode(KEY_STRING).unwrap();
+    let sk_vec = hex::decode(key_string).unwrap();
     let sk = SecretKey::from_slice(&sk_vec).unwrap();
 
     let key: String;
@@ -50,14 +47,14 @@ fn covenant_descriptor(private_key: bool, network: bdk::bitcoin::Network) -> Str
     format!("sh(and_v(v:pk({}),older(1)))", key)
 }
 
-fn load_convenant_wallet(network: bdk::bitcoin::Network) -> Wallet<SqliteDatabase>
+fn load_convenant_wallet(cfg: &ConfigFile) -> Wallet<SqliteDatabase>
 {
     let home_dir = dirs::home_dir();
 
     let mut path = home_dir.unwrap();
 
     path.push(".spacechains");
-    path.push("convenat");
+    path.push("convenant");
 
     std::fs::create_dir_all(path.clone()).unwrap();
 
@@ -67,9 +64,11 @@ fn load_convenant_wallet(network: bdk::bitcoin::Network) -> Wallet<SqliteDatabas
 
     let sqlite_database = bdk::database::SqliteDatabase::from_config(&sqlite_db_configuration).unwrap();
 
-    let desc = covenant_descriptor(true, network);
+    let desc = covenant_descriptor(true, cfg);
 
-    Wallet::new(desc.as_str(), None, Network::Signet, sqlite_database).unwrap()
+    let network = cfg.get_network().unwrap();
+
+    Wallet::new(desc.as_str(), None, network, sqlite_database).unwrap()
 }
 
 fn covenant_tx_validation(tx: &Transaction, covenant_script_pubkey: &Script, bump_script: &Script) -> bool
@@ -97,12 +96,13 @@ fn covenant_tx_validation(tx: &Transaction, covenant_script_pubkey: &Script, bum
 }
 
 fn check_covenant(
+    original_covenant_tx: &str,
     tx_list: &Vec<TransactionDetails>,
     txid: &Txid,
     covenant_script_pubkey: &Script,
     bump_script: &Script) -> (bool, u32)
 {
-    const ORIGINAL_COVENANT_TX: &str = "60c31751818bd4410eed84b1c9047863206cce2c7d4d610ce5841c4195ba6c3b";
+    //const ORIGINAL_COVENANT_TX: &str = "60c31751818bd4410eed84b1c9047863206cce2c7d4d610ce5841c4195ba6c3b";
 
     let mut tx_details = tx_list.iter().find(
         |tx| tx.txid == *txid
@@ -128,12 +128,12 @@ fn check_covenant(
         tx = tx_details.transaction.clone().unwrap();
     }
 
-    (tx.txid().to_string() == ORIGINAL_COVENANT_TX, height)
+    (tx.txid().to_string() == original_covenant_tx, height)
 }
 
-fn get_convenant_utxo(wallet: &Wallet<SqliteDatabase>, network: bdk::bitcoin::Network) -> Option<LocalUtxo>
+fn get_convenant_utxo(wallet: &Wallet<SqliteDatabase>, cfg: &ConfigFile) -> Option<LocalUtxo>
 {
-    let desc_str = covenant_descriptor(false, network);
+    let desc_str = covenant_descriptor(false, cfg);
     let desc = Descriptor::<bdk::bitcoin::PublicKey>::from_str(desc_str.as_str()).unwrap();
     let covenant_script_pubkey = desc.script_code().unwrap();
 
@@ -145,15 +145,20 @@ fn get_convenant_utxo(wallet: &Wallet<SqliteDatabase>, network: bdk::bitcoin::Ne
 
     // wallet.sync(&blockchain, SyncOptions::default()).unwrap();
 
-    utils::sync_wallet(&wallet);
+    // utils::sync_wallet(&wallet);
+    // utils::sync_wallet_rpc(String::from_str("covenant").unwrap(), &wallet);
+
+    utils::sync_wallet(cfg, "covenant", &wallet);
 
     let tx_list = wallet.list_transactions(true).unwrap();
 
     let mut utxo_height: u32 = 0;
     let mut covenant_utxo: Option<LocalUtxo> = None;
 
+    let original_covenant_tx = cfg.covenant_genesis_tx.as_str();
+
     for utxo in wallet.list_unspent().unwrap().iter() {
-        let valid_utxo = check_covenant(&tx_list, &utxo.outpoint.txid, &covenant_script_pubkey, &bump_script);
+        let valid_utxo = check_covenant(original_covenant_tx, &tx_list, &utxo.outpoint.txid, &covenant_script_pubkey, &bump_script);
 
         if valid_utxo.0 && valid_utxo.1 > utxo_height {
             utxo_height = valid_utxo.1;
@@ -164,7 +169,7 @@ fn get_convenant_utxo(wallet: &Wallet<SqliteDatabase>, network: bdk::bitcoin::Ne
     covenant_utxo
 }
 
-fn build_transaction(wallet: &Wallet<SqliteDatabase>, utxo: &LocalUtxo, network: bdk::bitcoin::Network) -> Transaction
+fn build_transaction(wallet: &Wallet<SqliteDatabase>, utxo: &LocalUtxo, cfg: &ConfigFile) -> Transaction
 {
     let input_satoshis = utxo.txout.value;
 
@@ -180,7 +185,7 @@ fn build_transaction(wallet: &Wallet<SqliteDatabase>, utxo: &LocalUtxo, network:
 
     tx_builder.fee_absolute(fee_amount);
 
-    let desc_str = covenant_descriptor(false, network);
+    let desc_str = covenant_descriptor(false, cfg);
     let desc = Descriptor::<bdk::bitcoin::PublicKey>::from_str(desc_str.as_str()).unwrap();
     let covenant_script_pubkey = desc.script_code().unwrap();
 

@@ -1,24 +1,30 @@
 use bdk::{Wallet, database::SqliteDatabase, wallet::{AddressIndex, export::FullyNodedExport}};
+use config_file::ConfigFile;
 use serde_json::{json, Value};
 
 mod keystore;
 mod wallet_manager;
 mod covenant;
 mod utils;
+mod config_file;
 
 fn main() {
+    // env_logger::init();
+    run();
+}
 
-    let network = bdk::bitcoin::Network::Signet;
+fn run() {
+    let (cfg, cfg_path) = config_file::create_or_get_default();
 
     let args: Vec<String> = std::env::args().collect();
 
-    let error_message = "Please run this with the following methods: new_address balance backup broadcast";
+    let error_message = "Please run this with the following methods: new_address balance backup broadcast config_file";
     if args.len() == 1 {
         println!("{}", error_message);
         return;
     };
     let method = args[1].as_str();
-    if method != "new_address" && method != "backup" && method != "broadcast" && method != "balance" {
+    if method != "new_address" && method != "backup" && method != "broadcast" && method != "balance" && method != "config_file" {
         println!("{}", error_message);
         return;
     }
@@ -29,21 +35,28 @@ fn main() {
                 println!("new_address method does not require argument.");
                 return;
             }
-            new_address(network);
+            new_address(&cfg);
         },
         "backup" => {
             if args.len() > 2 {
                 println!("backup method does not require argument.");
                 return;
             }
-            backup(network);
+            backup(&cfg);
         },
         "balance" => {
             if args.len() > 2 {
                 println!("balance method does not require argument.");
                 return;
             }
-            balance(network);
+            balance(&cfg);
+        },
+        "config_file" => {
+            if args.len() > 2 {
+                println!("config_file method does not require argument.");
+                return;
+            }
+            config_file(&cfg, &cfg_path);
         },
         "broadcast" => {
             if args.len() != 4 {
@@ -57,15 +70,26 @@ fn main() {
                 println!("Error: The data_message must be up to 80 bytes.");
             }
 
-            broadcast(network, data_message, fee_amount);
+            broadcast(&cfg, data_message, fee_amount);
         },
         _ => println!("{}", error_message),
     }
 }
 
-fn get_user_wallet(network: bdk::bitcoin::Network) -> Wallet<SqliteDatabase>
+fn config_file(cfg: &ConfigFile, path: &String)
+{
+    println!("Config file located in {}", path);
+
+    let obj = json!(cfg);
+
+    println!("{}", serde_json::to_string_pretty(&obj).unwrap());
+}
+
+fn get_user_wallet(cfg: &ConfigFile) -> Wallet<SqliteDatabase>
 {
     let wallet_name = "default";
+
+    let network = cfg.get_network().unwrap();
 
     let xprv_from_restore = keystore::get_wallet_xpriv(wallet_name, network);
 
@@ -77,13 +101,15 @@ fn get_user_wallet(network: bdk::bitcoin::Network) -> Wallet<SqliteDatabase>
 
     let wallet = wallet_manager::load_wallet(wallet_name, &xprv, network);
 
-    utils::sync_wallet(&wallet);
+    // utils::sync_wallet(&wallet);
+    // utils::sync_wallet_rpc(String::from_str("default").unwrap(), &wallet);
+    utils::sync_wallet(&cfg, "default", &wallet);
 
     wallet
 }
 
-fn new_address(network: bdk::bitcoin::Network) {
-    let wallet = get_user_wallet(network);
+fn new_address(cfg: &ConfigFile) {
+    let wallet = get_user_wallet(cfg);
 
     let addr = wallet.get_address(AddressIndex::New).unwrap();
 
@@ -92,8 +118,8 @@ fn new_address(network: bdk::bitcoin::Network) {
     println!("{}", serde_json::to_string_pretty(&obj).unwrap());
 }
 
-fn backup(network: bdk::bitcoin::Network) {
-    let wallet = get_user_wallet(network);
+fn backup(cfg: &ConfigFile) {
+    let wallet = get_user_wallet(cfg);
 
     let export = FullyNodedExport::export_wallet(&wallet, "exported wallet", true)
         .map_err(ToString::to_string)
@@ -105,8 +131,8 @@ fn backup(network: bdk::bitcoin::Network) {
     println!("{}", serde_json::to_string_pretty(&value).unwrap());
 }
 
-fn balance(network: bdk::bitcoin::Network) {
-    let wallet = get_user_wallet(network);
+fn balance(cfg: &ConfigFile) {
+    let wallet = get_user_wallet(cfg);
 
     let balance = wallet.get_balance().unwrap();
 
@@ -116,9 +142,9 @@ fn balance(network: bdk::bitcoin::Network) {
     println!("{}", serde_json::to_string_pretty(&obj).unwrap());
 }
 
-fn broadcast(network: bdk::bitcoin::Network, data_message: &str, fee_amount: u64) {
+fn broadcast(cfg: &ConfigFile, data_message: &str, fee_amount: u64) {
 
-    let wallet = get_user_wallet(network);
+    let wallet = get_user_wallet(cfg);
 
     let balance = wallet.get_balance().unwrap().confirmed;
     if balance < fee_amount {
@@ -126,9 +152,9 @@ fn broadcast(network: bdk::bitcoin::Network, data_message: &str, fee_amount: u64
         return;
     }
 
-    let (covenant_transaction,satisfaction_weight) = covenant::create_convenant_transaction(network);
+    let (covenant_transaction,satisfaction_weight) = covenant::create_convenant_transaction(cfg);
 
-    let cpfp_transaction = wallet_manager::create_cpfp_transaction(&wallet, data_message, &covenant_transaction, satisfaction_weight, fee_amount);
+    let cpfp_transaction = wallet_manager::create_cpfp_transaction(cfg, &wallet, data_message, &covenant_transaction, satisfaction_weight, fee_amount);
 
     utils::broadcast_tx(&covenant_transaction);
     utils::broadcast_tx(&cpfp_transaction);

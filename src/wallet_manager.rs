@@ -6,6 +6,7 @@ use bdk::{bitcoin::util::bip32::ExtendedPrivKey};
 use bdk::database::{any::SqliteDbConfiguration, ConfigurableDatabase};
 use bdk::{Wallet, KeychainKind, SignOptions};
 
+use crate::config_file::ConfigFile;
 use crate::utils;
 
 pub fn load_wallet(wallet_name: &str, xprv: &ExtendedPrivKey, network: bdk::bitcoin::Network) -> Wallet<SqliteDatabase>
@@ -32,21 +33,17 @@ pub fn load_wallet(wallet_name: &str, xprv: &ExtendedPrivKey, network: bdk::bitc
         sqlite_database,
     )
     .unwrap()
-
-    // let addr = wallet.get_address(AddressIndex::New).unwrap();
-
-    // println!("address: {}", addr.address.to_string());
-    // println!("addr.index: {}", addr.index);
 }
 
 pub fn create_cpfp_transaction(
+    cfg: &ConfigFile,
     wallet: &Wallet<SqliteDatabase>,
     output: &str,
     convenant_transaction: &Transaction,
     satisfaction_weight: usize,
     fee_amount: u64) -> Transaction
 {
-    utils::sync_wallet(wallet);
+    utils::sync_wallet(&cfg, "default", &wallet);
 
     let balance = wallet.get_balance().unwrap();
 

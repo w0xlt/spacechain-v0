@@ -6,7 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bdk = { version = "0.26.0", default-feature = false, features = ["all-keys", "sqlite-bundled"] }
+bdk = { version = "0.26.0", default-feature = false, features = ["all-keys", "sqlite-bundled", "rpc"] }
 hex = "0.4.3"
 dirs = "4.0"
+serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
+confy = "0.5.1"
+log = "0.4.17"
+env_logger = "0.10.0"
+
+[build-dependencies]
+bdk = { version = "0.26.0", default-feature = false }
+dirs = "4.0"
+serde = { version = "1.0.152", features = ["derive"] }
+confy = "0.5.1"

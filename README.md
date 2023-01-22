@@ -8,18 +8,25 @@ For now, it deliberately keeps the same behavior as the original project.
 
 ## Requirements
 
-To run this software, signet [Electrs server](https://github.com/romanz/electrs) running on `tcp://127.0.0.1:50001` is required.
+To run this software, signet Bitcoin Core is required.
 
 ## Tutorial
 
-### 1 - Create and fund the wallet
+### 0 - Clone the project and build
 
 ```
 $ git clone git@github.com:w0xlt/spacechain-v0.git
+$ git checkout -b add_bcore_rpc origin/add_bcore_rpc
 $ cargo build --release
 $ cd target
 $ cd release
 ```
+
+By default, a configuration file is created in `$HOME/.spacechains/spacechains.conf`.
+When executing any comand below, the software will try to connect to `127.0.0.1:38332` using the authentication file `$HOME/.bitcoin/signet/.cookie`.
+If these settings are different on the machine, the file should be edited.
+
+### 1 - Create and fund the wallet
 
 Then run the software with the following command to get a new address. If a wallet does not exist, this command will create one.
 
@@ -89,6 +96,35 @@ $ spacechains backup
   "label": "exported wallet"
 }
 ```
+
+### 5 - Config File
+
+The command `config_file` displays the configurable parameters the user can customize.
+
+The `blockchain` option can be `bitcoin_rpc` and `electrum`.
+
+For now, only `signet` option is supported.
+
+Other options can be changed according to user's Electrum, bitcoind and covenants settings.
+
+The first line shows where the file is located. By default it is in `$HOME/.spacechains/spacechains.conf`
+
+```
+$ spacechains config_file
+
+Config file located in /home/node/.spacechains/spacechains.conf
+{
+  "bitcoind_auth_file": "/home/node/.bitcoin/signet/.cookie",
+  "bitcoind_url": "127.0.0.1:38332",
+  "blockchain": "bitcoin_rpc",
+  "covenant_genesis_tx": "60c31751818bd4410eed84b1c9047863206cce2c7d4d610ce5841c4195ba6c3b",
+  "covenant_private_key_hex": "eb445ec7e0fd814db1e84622cddad9cd30154ee22bc6c2a4a61f6287be39f2d2",
+  "electrum_url": "tcp://127.0.0.1:50001",
+  "network": "signet"
+}
+
+```
+
 
 
 

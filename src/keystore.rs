@@ -1,10 +1,23 @@
 use std::fs::File;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bdk::{bitcoin::util::bip32::ExtendedPrivKey};
 use bdk::keys::{GeneratedKey, bip39::{Mnemonic, WordCount, Language}, GeneratableKey};
 use bdk::miniscript::Tap;
 
 use std::io::{Write, Read};
+
+fn write_birthdate(wallet_dir: &PathBuf) {
+
+    let mut path = wallet_dir.clone();
+    path.push("birthdate");
+
+    let birthdate = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    let mut file = File::create(path).unwrap();
+    file.write_all(&birthdate.to_ne_bytes()).unwrap();
+}
 
 pub fn get_wallet_xpriv(wallet_name: &str, network: bdk::bitcoin::Network) -> Option<ExtendedPrivKey>
 {
@@ -20,31 +33,19 @@ pub fn get_wallet_xpriv(wallet_name: &str, network: bdk::bitcoin::Network) -> Op
     path.push(".spacechains");
     path.push(wallet_name);
 
-    match std::fs::create_dir_all(path.clone()) {
-        Ok(_) => {},
-        Err(_) => {
-            println!("Unable to create or locate storage dir!");
-            return None;
-        }
-    }
+    std::fs::create_dir_all(path.clone()).unwrap();
+
+    let wallet_dir = path.clone();
 
     path.push("keystore");
 
-    let mut key_file: Option<File>= None;
-
     let path_str = path.as_os_str().to_str().unwrap();
 
-    match File::open(path.clone()) {
-        Ok(file) => {
-            key_file = Some(file);
-        },
-        Err(_) => { }
-    }
+    let key_file = File::open(path.clone()).ok();
 
     let xprv: Option<ExtendedPrivKey>;
 
     if let Some(mut file) = key_file {
-
         let mut buffer = Vec::<u8>::new();
         file.read_to_end(&mut buffer).unwrap();
 
@@ -65,6 +66,8 @@ pub fn get_wallet_xpriv(wallet_name: &str, network: bdk::bitcoin::Network) -> Op
 
         let mut output = File::create(path).unwrap();
         output.write_all(&seed).unwrap();
+
+        write_birthdate(&wallet_dir);
 
         xprv = Some(ExtendedPrivKey::new_master(network, &seed).unwrap());
     }
